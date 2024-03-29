@@ -1,4 +1,5 @@
 #include "imports.hh"
+#include "RSA.hh"
 using namespace std;
 
 struct User
@@ -6,6 +7,9 @@ struct User
     string email;
     string password;
     int fd;
+    string e_key;
+    string d_key;
+    string n_key;
 };
 map<string, User> users;
 
@@ -179,17 +183,33 @@ void *clientHandler(void *args)
         if (response == "signin successful")
         {
             cout << "User signed-in " << email << " pswd : " << password << endl;
+            
         }
     }
     else
     {
         response = "Invalid command";
     }
-
+    cout<<"sending response"<<response<<endl;
     send(nsfd, response, strlen(response), 0);
+    sleep(3);
     if (res)
     {
+        mpz_t e,d,n;
+        mpz_inits(e,d,n,NULL);
+        generateKeys(e,d,n);
+        string e_key=mpz_to_string(e);
+        string d_key=mpz_to_string(n);
+        string n_key=mpz_to_string(n);
+        users[email].e_key=e_key;
+        users[email].d_key=d_key;
+        users[email].n_key=n_key;
+        cout<<"e_RSA :"<<endl<<e_key<<endl;
+        cout<<"n_RSA :"<<endl<<n_key<<endl;
+        cout<<"d_RSA :"<<endl<<d_key<<endl;
         users[email].fd = nsfd;
+        string key_exchange=users[email].e_key+":"+users[email].n_key+":";
+        int x=send(nsfd,key_exchange.c_str(),key_exchange.length(),0);
     }
     else
         pthread_exit(NULL);

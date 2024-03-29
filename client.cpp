@@ -1,4 +1,5 @@
 #include "imports.hh"
+#include "RSA.hh"
 using namespace std;
 void AnswerPoll(int sfd)
 {
@@ -101,6 +102,25 @@ int main()
         string response(buffer);
         if (response == "Invalid email or password" || response == "Invalid otp")
             exit(0);
+
+
+        char buffer[500000];
+        read(sfd, buffer, 500000);
+        string RSAkeys(buffer);
+        string e_key,n_key;
+        istringstream iss(RSAkeys);
+        getline(iss, e_key, ':');
+        getline(iss, n_key, ':');
+        mpz_t e,n;
+        mpz_init(e);
+        mpz_init(n);
+        string_to_mpz(e_key,e);
+        string_to_mpz(n_key,n);
+        cout<<"recieved RSA Keys from server"<<endl;
+        cout<<"e_RSA :"<<endl<<e<<endl;
+        cout<<"n_RSA :"<<endl<<n<<endl;
+        
+
 
         while (true)
         {

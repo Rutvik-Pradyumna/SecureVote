@@ -37,29 +37,29 @@ void generateKeys(mpz_t& e, mpz_t& d, mpz_t& n)
     gmp_randclear(state);
 }
 
-void encryptRSA(const mpz_t& plaintext,const mpz_t& e,const mpz_t& n,mpz_t& ciphertext) 
-{
-    mpz_powm(ciphertext,plaintext,e,n);
-}
+// void encryptRSA(const mpz_t& plaintext,const mpz_t& e,const mpz_t& n,mpz_t& ciphertext) 
+// {
+//     mpz_powm(ciphertext,plaintext,e,n);
+// }
 
-// Function to decrypt a ciphertext
-void decryptRSA(const mpz_t& ciphertext,const mpz_t& d,const mpz_t& n,mpz_t& plaintext) 
-{
-    mpz_powm(plaintext,ciphertext,d,n);
-}
-char intToChar(int i) 
-{
-    // Ensure i is within the range of printable characters
-    i=i%95; // ASCII printable characters start from ' ' (32) and end at '~' (126)
-    if(i<0)i+=95; // Adjust negative values
-    return ' '+i;
-}
-int charToInt(char c)
-{
-    int i=c-' '; // Get the offset from the first printable ASCII character
-    if(i<0||i>=95)i=0; // Ensure it's within the range of printable characters
-    return i;
-}
+// // Function to decrypt a ciphertext
+// void decryptRSA(const mpz_t& ciphertext,const mpz_t& d,const mpz_t& n,mpz_t& plaintext) 
+// {
+//     mpz_powm(plaintext,ciphertext,d,n);
+// }
+// char intToChar(int i) 
+// {
+//     // Ensure i is within the range of printable characters
+//     i=i%95; // ASCII printable characters start from ' ' (32) and end at '~' (126)
+//     if(i<0)i+=95; // Adjust negative values
+//     return ' '+i;
+// }
+// int charToInt(char c)
+// {
+//     int i=c-' '; // Get the offset from the first printable ASCII character
+//     if(i<0||i>=95)i=0; // Ensure it's within the range of printable characters
+//     return i;
+// }
 
 string StringencryptRSA(const string& plaintext,const mpz_t& e,const mpz_t& n) 
 {

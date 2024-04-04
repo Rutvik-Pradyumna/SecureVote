@@ -8,7 +8,6 @@ struct User
     string password;
     int fd;
     string e_key;
-    string d_key;
     string n_key;
 };
 map<string, User> users;
@@ -20,6 +19,7 @@ struct Poll
 };
 vector<Poll> polls;
 
+string server_e,server_d,server_n;
 bool signup(string email, string password, int nsfd)
 {
     srand(time(0));
@@ -157,10 +157,25 @@ void *clientHandler(void *args)
     char buffer[1024] = {0};
     const char *response;
 
+    // key exchanging
+    char buff[2000]={'\0'};
+    recv(nsfd, buff,sizeof(buff),0);
+    string user_keys(buff);
+    string user_e,user_n;
+    size_t pos = user_keys.find(':');
+    user_e = user_keys.substr(0, pos);
+    string a = user_keys.substr(pos + 1);
+    istringstream iss(a);
+    getline(iss, user_n, ':');
+
+    string key_exchange=server_e+":"+server_n+":";
+    int x=send(nsfd,key_exchange.c_str(),key_exchange.length(),0);
+    cout<<"key exchange success"<<endl;
+
     // Read client request
     read(nsfd, buffer, 1024);
     string request(buffer);
-    size_t pos = request.find(':');
+    pos = request.find(':');
     string command = request.substr(0, pos);
     string data = request.substr(pos + 1);
     pos = data.find(':');
@@ -190,26 +205,14 @@ void *clientHandler(void *args)
     {
         response = "Invalid command";
     }
-    cout<<"sending response"<<response<<endl;
+
     send(nsfd, response, strlen(response), 0);
-    sleep(3);
+
     if (res)
     {
-        mpz_t e,d,n;
-        mpz_inits(e,d,n,NULL);
-        generateKeys(e,d,n);
-        string e_key=mpz_to_string(e);
-        string d_key=mpz_to_string(n);
-        string n_key=mpz_to_string(n);
-        users[email].e_key=e_key;
-        users[email].d_key=d_key;
-        users[email].n_key=n_key;
-        cout<<"e_RSA :"<<endl<<e_key<<endl;
-        cout<<"n_RSA :"<<endl<<n_key<<endl;
-        cout<<"d_RSA :"<<endl<<d_key<<endl;
         users[email].fd = nsfd;
-        string key_exchange=users[email].e_key+":"+users[email].n_key+":";
-        int x=send(nsfd,key_exchange.c_str(),key_exchange.length(),0);
+        users[email].e_key=user_e;
+        users[email].n_key=user_n;
     }
     else
         pthread_exit(NULL);
@@ -243,6 +246,17 @@ void *clientHandler(void *args)
 int main()
 {
     int sfd = Create_TCPSocket_server();
+
+    mpz_t e,d,n;
+    mpz_inits(e,d,n,NULL);
+    generateKeys(e,d,n);
+    server_e=mpz_to_string(e);
+    server_d=mpz_to_string(n);
+    server_n=mpz_to_string(n);
+    cout<<"e_RSA :"<<endl<<server_e<<endl;
+    cout<<"n_RSA :"<<endl<<server_n<<endl;
+    cout<<"d_RSA :"<<endl<<server_d<<endl;
+
     while (true)
     {
         sockaddr_in address;

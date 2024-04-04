@@ -1,6 +1,7 @@
 #include "imports.hh"
 #include "RSA.hh"
 using namespace std;
+string server_e,server_n,client_e,client_n,client_d;
 void AnswerPoll(int sfd)
 {
     char buffer[1024];
@@ -70,6 +71,33 @@ int main()
     port = 9000;
     ip = "127.0.0.1";
     int sfd = Create_TCPSocket_client(port, ip);
+
+    // sending clients pub_key
+    mpz_t e,d,n;
+    mpz_inits(e,d,n,NULL);
+    generateKeys(e,d,n);
+    client_e=mpz_to_string(e);
+    client_d=mpz_to_string(n);
+    client_n=mpz_to_string(n);
+    string key_exchange=client_e+":"+client_n+":";
+    int x=send(sfd,key_exchange.c_str(),key_exchange.length(),0);
+
+    // receiving servers pub_key
+    char buffe[5000];
+    recv(sfd, buffe, 5000, 0);
+    string RSAkeys(buffe);
+    istringstream iss(RSAkeys);
+    getline(iss,server_e, ':');
+    getline(iss,server_n ,':');
+    // mpz_t e,n;
+    // mpz_init(e);
+    // mpz_init(n);
+    // string_to_mpz(server_e,e);
+    // string_to_mpz(server_n,n);
+    cout<<"recieved RSA Keys from server"<<endl;
+    cout<<"e_RSA : "<<endl<<server_e<<endl;
+    cout<<"n_RSA : "<<endl<<server_n<<endl;
+
     cout << "Enter command (signup/signin/exit): ";
     cin >> command;
     if (command == "signup" || command == "signin")
@@ -103,22 +131,7 @@ int main()
         if (response == "Invalid email or password" || response == "Invalid otp")
             exit(0);
 
-
-        char buffer[500000];
-        read(sfd, buffer, 500000);
-        string RSAkeys(buffer);
-        string e_key,n_key;
-        istringstream iss(RSAkeys);
-        getline(iss, e_key, ':');
-        getline(iss, n_key, ':');
-        mpz_t e,n;
-        mpz_init(e);
-        mpz_init(n);
-        string_to_mpz(e_key,e);
-        string_to_mpz(n_key,n);
-        cout<<"recieved RSA Keys from server"<<endl;
-        cout<<"e_RSA :"<<endl<<e<<endl;
-        cout<<"n_RSA :"<<endl<<n<<endl;
+        
         
 
 

@@ -1,22 +1,29 @@
 #include "imports.hh"
 using namespace std;
 
+int PollCount = 1;
 struct User
 {
     string email;
     string password;
     int fd;
+    RSA *clientRSA;
 };
 map<string, User> users;
 
 struct Poll
 {
+    int id;
+    string poll_by;
     string Qn_optns;
     map<string, int> poll_status;
 };
 vector<Poll> polls;
 
-bool signup(string email, string password, int nsfd)
+RSA *serverRSA;
+const BIGNUM *sn = NULL, *se = NULL, *sd = NULL;
+
+bool signup(string email, string password, int nsfd,RSA *rsa)
 {
     srand(time(0));
     string otp = "";
@@ -26,21 +33,19 @@ bool signup(string email, string password, int nsfd)
     }
 
     string response = mailSender(email, otp);
-
+    if (response.substr(0, 5) != "Check")
+        response = "error";
+    
+    response = rsaPublicEncrypt(reinterpret_cast<const unsigned char *>(response.c_str()), response.size(), rsa);
     if (send(nsfd, response.c_str(), response.size(), 0) < 0)
         pthread_exit(NULL);
 
-    if (response.substr(0, 5) != "Check")
-        response = "error";
-
-    char buffer[1024] = {0};
-    recv(nsfd, buffer, 1024, 0);
-
-    string recvdOTP(buffer);
-    cout << recvdOTP << endl;
+    char buffer[6000] = {'\0'};
+    int valread = recv(nsfd, buffer, 6000, 0);
+    string recvdOTP = rsaPrivateDecrypt(reinterpret_cast<const unsigned char *>(buffer), valread, serverRSA);
     if (recvdOTP == otp)
     {
-        users[email] = {email, password, -1};
+        users[email] = {email, password, -1, rsa};
         return 1;
     }
     return 0;
@@ -69,104 +74,140 @@ bool CheckPollStatus(struct Poll x)
     return true;
 }
 
-void PostPoll(int sfd)
+void PostPoll(int sfd, string email)
 {
-    char buffer[1024];
-    read(sfd, buffer, 1024);
-    string PollQn(buffer);
+    char buffer[6000]={'\0'};
+    int valread = recv(sfd, buffer, 6000, 0);
+    string PollQn = rsaPrivateDecrypt(reinterpret_cast<const unsigned char *>(buffer), valread, serverRSA);;
     cout << "Received poll question: " << PollQn << endl;
-    map<string, int> UsersTillNow;
-    for (auto i : users)
-    {
-        if (i.second.fd != sfd)
-        {
-            UsersTillNow[i.first] = -1;
-        }
-    }
-    cout << UsersTillNow.size() << endl;
-    polls.push_back({PollQn, UsersTillNow});
+    map<string, int> poll_status;
+    polls.push_back({PollCount++, email, PollQn, poll_status});
 }
 
-string GetWinningOption(map<string, int> votes)
+int GetWinningOption(map<string, int> votes)
 {
-    string winningOption;
     vector<int> count(4, 0);
     for (auto it : votes)
     {
-        if (it.second == 1)
-            count[0]++;
-        if (it.second == 2)
-            count[1]++;
-        if (it.second == 3)
-            count[2]++;
-        if (it.second == 4)
-            count[3]++;
+        count[it.second - 1]++;
+        cout << it.second << " ";
     }
     int index = max_element(count.begin(), count.end()) - count.begin();
-    return to_string(index);
+    return index + 1;
 }
 
 void SendPoll(int nsfd, string email)
 {
-
-    while (true)
+    string UnansweredPolls;
+    for (auto each_poll : polls)
     {
-        bool flag = 0;
+        if (each_poll.poll_by != email && each_poll.poll_status[email] != -1)
+        {
+            string qn;
+            istringstream iss(each_poll.Qn_optns);
+            getline(iss, qn, ':');
+            UnansweredPolls += (to_string(each_poll.id) + ")" + qn + ":");
+        }
+    }
+    send(nsfd, UnansweredPolls.c_str(), UnansweredPolls.length(), 0);
+    while (1)
+    {
+        char buff[2000] = {'\0'};
+        recv(nsfd, buff, sizeof(buff), 0);
+        string qid(buff);
+        if (qid == "-1")
+            break;
         for (auto &each_poll : polls)
         {
-            if (each_poll.poll_status[email] == -1)
+            if (each_poll.id == stoi(qid) && each_poll.poll_status[email] == 0)
             {
-                flag = 1;
                 send(nsfd, each_poll.Qn_optns.c_str(), each_poll.Qn_optns.length(), 0);
-                char answer_buffer[1024] = {0};
-                read(nsfd, answer_buffer, 1024);
-                string answer(answer_buffer);
-                each_poll.poll_status[email] = stoi(answer);
-
-                if (CheckPollStatus(each_poll))
-                {
-                    cout << "the poll " << each_poll.Qn_optns << " is answered by all the clients" << endl;
-                    string winner = GetWinningOption(each_poll.poll_status);
-                    cout << "The option that recieved most number of votes is :" << stoi(winner) + 1 << endl;
-                }
-
-                break;
+                char optbuff[2000] = {'\0'};
+                recv(nsfd, optbuff, sizeof(buff), 0);
+                string opt(optbuff);
+                each_poll.poll_status[email] = stoi(opt);
+                cout << each_poll.poll_status[email] << endl;
             }
         }
-        cout << flag << endl;
-        if (flag == 0)
-        {
-            string res = "#";
-            send(nsfd, res.c_str(), res.length(), 0);
-        }
-        char buffer[1024] = {0};
-        read(nsfd, buffer, 1024);
-        string command(buffer);
-        if (command != "continue")
-            break;
     }
+}
+
+void SendResults(int nsfd, string email,RSA *rsa)
+{
+    string Result;
+    for (auto each_poll : polls)
+    {
+
+        if (each_poll.poll_by == email)
+        {
+            int opt = GetWinningOption(each_poll.poll_status);
+            string PollQn = each_poll.Qn_optns;
+            size_t pos = PollQn.find(':');
+            string question = PollQn.substr(0, pos);
+            string options = PollQn.substr(pos + 1);
+            istringstream iss(options);
+            string option1, option2, option3, option4;
+            getline(iss, option1, ':');
+            getline(iss, option2, ':');
+            getline(iss, option3, ':');
+            getline(iss, option4, ':');
+
+            cout << question << " " << email << " " << opt << endl;
+            cout << Result << endl;
+            if (opt == 1)
+                Result += (question + " - " + option1 + ":");
+            else if (opt == 2)
+                Result += (question + " - " + option2 + ":");
+            else if (opt == 3)
+                Result += (question + " - " + option3 + ":");
+            else if (opt == 4)
+                Result += (question + " - " + option4 + ":");
+            cout << Result << endl;
+        }
+    }
+    Result = rsaPublicEncrypt(reinterpret_cast<const unsigned char *>(Result.c_str()), Result.size(), rsa);
+    send(nsfd, Result.c_str(), Result.length(), 0);
 }
 
 void *clientHandler(void *args)
 {
     int nsfd = *((int *)args);
     char buffer[1024] = {0};
-    const char *response;
+    string response;
+
+    // key exchanging
+    char *pubN = printHex(sn, "Public key (n)");
+    char *pubE = printHex(se, "Public key (e)");
+    char user_n[6000] = {'\0'};
+    recv(nsfd, user_n, sizeof(user_n), 0);
+    sleep(1);
+    send(nsfd, pubN, strlen(pubN) + 1, 0);
+    sleep(1);
+
+    char user_e[6000] = {'\0'};
+    recv(nsfd, user_e, sizeof(user_e), 0);
+    sleep(1);
+    send(nsfd, pubE, strlen(pubE) + 1, 0);
+    sleep(1);
+    cout<<"Key exchange successful"<<endl;
+
+    RSA *rsa = setRSAAttributes(user_n, user_e);
 
     // Read client request
-    read(nsfd, buffer, 1024);
-    string request(buffer);
-    size_t pos = request.find(':');
+    int bytes_read = read(nsfd, buffer, 1024);
+    string request = rsaPrivateDecrypt(reinterpret_cast<const unsigned char *>(buffer), bytes_read, serverRSA);
+    cout << "request : " << request << endl;
+
+    int pos = request.find(':');
     string command = request.substr(0, pos);
     string data = request.substr(pos + 1);
     pos = data.find(':');
     string email = data.substr(0, pos);
     string password = data.substr(pos + 1);
     bool res;
-
     if (command == "signup")
     {
-        res = signup(email, password, nsfd);
+        res = signup(email, password, nsfd, rsa);
         response = res ? "signup successful" : "Invalid otp";
         if (res)
             cout << "User signed-up " << email << " pswd : " << password << endl;
@@ -186,18 +227,21 @@ void *clientHandler(void *args)
         response = "Invalid command";
     }
 
-    send(nsfd, response, strlen(response), 0);
+    response = rsaPublicEncrypt(reinterpret_cast<const unsigned char *>(response.c_str()), response.size(), rsa);
+    int sz=send(nsfd, response.c_str(), response.size(), 0);
+
     if (res)
     {
         users[email].fd = nsfd;
+        users[email].clientRSA = rsa;
     }
     else
         pthread_exit(NULL);
 
     while (1)
     {
-        char command_buffer[1024] = {0};
-        read(nsfd, command_buffer, 1024);
+        char command_buffer[1024] = {'\0'};
+        recv(nsfd, command_buffer, 6000, 0);
         string command(command_buffer);
         if (command == "logout")
         {
@@ -209,11 +253,15 @@ void *clientHandler(void *args)
         {
             string response = "granted";
             send(nsfd, response.c_str(), response.size(), 0);
-            PostPoll(nsfd);
+            PostPoll(nsfd, email);
         }
         else if (command == "AnswerPoll")
         {
             SendPoll(nsfd, email);
+        }
+        else if (command == "ShowResults")
+        {
+            SendResults(nsfd, email, rsa);
         }
     }
 
@@ -223,6 +271,10 @@ void *clientHandler(void *args)
 int main()
 {
     int sfd = Create_TCPSocket_server();
+    serverRSA = generateRSAKeyPair(1024);
+    RSA_get0_key(serverRSA, &sn, &se, &sd);
+    // cout<<"My key pairs : "<<endl<<sn<<endl<<se<<endl<<sd<<endl;
+
     while (true)
     {
         sockaddr_in address;

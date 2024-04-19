@@ -22,6 +22,10 @@
 #include <curl/curl.h>
 #include <cstdlib>
 #include <ctime>
+#include <openssl/rsa.h>
+#include <openssl/pem.h>
+#include <openssl/evp.h>
+#include <openssl/rand.h>
 #define BUFSIZE 6000
 using namespace std;
 
@@ -120,4 +124,99 @@ string mailSender(string email, string otp)
         return response;
     }
     return "error";
+}
+
+RSA *generateRSAKeyPair(int bits)
+{
+    RSA *rsa = RSA_new();
+    BIGNUM *e = BN_new();
+
+    // Set public exponent
+    BN_set_word(e, RSA_F4);
+
+    // Generate key pair
+    RSA_generate_key_ex(rsa, bits, e, NULL);
+
+    BN_free(e);
+
+    return rsa;
+}
+
+char *printHex(const BIGNUM *bn, const char *label)
+{
+    char *hex = BN_bn2hex(bn);
+    return hex;
+}
+
+RSA *setRSAAttributes(const char *pubN, const char *pubE)
+{
+    RSA *rsa = RSA_new();
+    BIGNUM *n = NULL, *e = NULL;
+
+    // Convert pubN and pubE from char* to BIGNUM*
+    BN_hex2bn(&n, pubN);
+    BN_hex2bn(&e, pubE);
+
+    // Set RSA public key attributes
+    RSA_set0_key(rsa, n, e, NULL);
+    return rsa;
+}
+string rsaPrivateEncrypt(const unsigned char *plaintext, int plaintextLen, RSA *rsa)
+{
+    unsigned char *encrypted = new unsigned char[RSA_size(rsa)]; // Allocate memory
+    int encryptedLen = RSA_private_encrypt(plaintextLen, plaintext, encrypted, rsa, RSA_PKCS1_PADDING);
+    if (encryptedLen == -1)
+    {
+        // Error handling
+        delete[] encrypted; // Don't forget to free memory
+        return "";          // Return empty string indicating failure
+    }
+    string EncryptedText(reinterpret_cast<const char *>(encrypted), encryptedLen);
+    delete[] encrypted; // Free memory
+    return EncryptedText;
+}
+
+string rsaPublicDecrypt(const unsigned char *encrypted, int encryptedLen, RSA *rsa)
+{
+    unsigned char *decrypted = new unsigned char[RSA_size(rsa)]; // Allocate memory
+    int decryptedLen = RSA_public_decrypt(encryptedLen, encrypted, decrypted, rsa, RSA_PKCS1_PADDING);
+    if (decryptedLen == -1)
+    {
+        // Error handling
+        delete[] decrypted; // Don't forget to free memory
+        return "";          // Return empty string indicating failure
+    }
+    string DecryptedText(reinterpret_cast<const char *>(decrypted), decryptedLen);
+    delete[] decrypted; // Free memory
+    return DecryptedText;
+}
+
+string rsaPublicEncrypt(const unsigned char *plaintext, int plaintextLen, RSA *rsa)
+{
+    unsigned char *encrypted = new unsigned char[RSA_size(rsa)]; // Allocate memory
+    int encryptedLen = RSA_public_encrypt(plaintextLen, plaintext, encrypted, rsa, RSA_PKCS1_PADDING);
+    if (encryptedLen == -1)
+    {
+        // Error handling
+        delete[] encrypted; // Don't forget to free memory
+        return "";          // Return empty string indicating failure
+    }
+    string EncryptedText(reinterpret_cast<const char *>(encrypted), encryptedLen);
+    delete[] encrypted; // Free memory
+    return EncryptedText;
+}
+
+string rsaPrivateDecrypt(const unsigned char *encrypted, int encryptedLen, RSA *rsa)
+{
+    unsigned char *decrypted = new unsigned char[RSA_size(rsa)]; // Allocate memory
+    int decryptedLen = RSA_private_decrypt(encryptedLen, encrypted, decrypted, rsa, RSA_PKCS1_PADDING);
+    if (decryptedLen == -1)
+    {
+        // Error handling
+        delete[] decrypted; // Don't forget to free memory
+        return "";          // Return empty string indicating failure
+    }
+    string DecryptedText(reinterpret_cast<const char *>(decrypted), decryptedLen);
+    delete[] decrypted; // Free memory
+    return DecryptedText;
 }

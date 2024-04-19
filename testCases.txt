@@ -1,0 +1,24 @@
+testCase1:
+
+signup
+siddhardhkaluva2003@gmail.com
+siddu2003
+...
+PostPoll
+Which programming language do you prefer?
+Python
+Java
+C++
+JavaScript
+logout
+
+testCase2:
+
+signup 
+kr21csb0b30@student.nitw.ac.in
+myPass
+...
+AnswerPoll
+1
+3
+-1

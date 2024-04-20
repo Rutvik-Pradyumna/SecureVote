@@ -35,7 +35,14 @@ void AnswerPoll(int sfd)
     string option;
     cin >> option;
 
+    string HashofOption = hashSHA256(option);
+
+    option = rsaPublicEncrypt(reinterpret_cast<const unsigned char *>(option.c_str()), option.size(), serverRSA);
     send(sfd, option.c_str(), size(option), 0);
+    sleep(1);
+
+    HashofOption = rsaPrivateEncrypt(reinterpret_cast<const unsigned char *>(HashofOption.c_str()), HashofOption.size(), clientRSA);
+    send(sfd, HashofOption.c_str(), size(HashofOption), 0);
 }
 
 void PostPoll(int sfd)
@@ -65,9 +72,8 @@ void DisplayResults(int sfd)
 {
     char buffer[6000] = {'\0'};
     int valread = recv(sfd, buffer, 6000, 0);
-    cout<<valread<<"wjhbdc"<<buffer<<endl;
     string results = rsaPrivateDecrypt(reinterpret_cast<const unsigned char *>(buffer), valread, clientRSA);
-    cout<<results<<endl;
+
     cout << "The Results of all the qns and answers that are posted by you are " << endl;
     istringstream iss(results);
     while (1)
@@ -161,7 +167,7 @@ int main()
 
             if (command == "PostPoll")
             {
-                char buffer[6000]={'\0'};
+                char buffer[6000] = {'\0'};
                 recv(sfd, buffer, 6000, 0);
                 string permission(buffer);
                 cout << "Server Response : " << permission << endl;

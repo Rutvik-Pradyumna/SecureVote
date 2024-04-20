@@ -23,7 +23,7 @@ vector<Poll> polls;
 RSA *serverRSA;
 const BIGNUM *sn = NULL, *se = NULL, *sd = NULL;
 
-bool signup(string email, string password, int nsfd,RSA *rsa)
+bool signup(string email, string password, int nsfd, RSA *rsa)
 {
     srand(time(0));
     string otp = "";
@@ -35,7 +35,7 @@ bool signup(string email, string password, int nsfd,RSA *rsa)
     string response = mailSender(email, otp);
     if (response.substr(0, 5) != "Check")
         response = "error";
-    
+
     response = rsaPublicEncrypt(reinterpret_cast<const unsigned char *>(response.c_str()), response.size(), rsa);
     if (send(nsfd, response.c_str(), response.size(), 0) < 0)
         pthread_exit(NULL);
@@ -76,9 +76,10 @@ bool CheckPollStatus(struct Poll x)
 
 void PostPoll(int sfd, string email)
 {
-    char buffer[6000]={'\0'};
+    char buffer[6000] = {'\0'};
     int valread = recv(sfd, buffer, 6000, 0);
-    string PollQn = rsaPrivateDecrypt(reinterpret_cast<const unsigned char *>(buffer), valread, serverRSA);;
+    string PollQn = rsaPrivateDecrypt(reinterpret_cast<const unsigned char *>(buffer), valread, serverRSA);
+    ;
     cout << "Received poll question: " << PollQn << endl;
     map<string, int> poll_status;
     polls.push_back({PollCount++, email, PollQn, poll_status});
@@ -96,12 +97,12 @@ int GetWinningOption(map<string, int> votes)
     return index + 1;
 }
 
-void SendPoll(int nsfd, string email)
+void SendPoll(int nsfd, string email, RSA *rsa)
 {
     string UnansweredPolls;
     for (auto each_poll : polls)
     {
-        if (each_poll.poll_by != email && each_poll.poll_status[email] != -1)
+        if (each_poll.poll_by != email && each_poll.poll_status[email] == 0)
         {
             string qn;
             istringstream iss(each_poll.Qn_optns);
@@ -122,17 +123,30 @@ void SendPoll(int nsfd, string email)
             if (each_poll.id == stoi(qid) && each_poll.poll_status[email] == 0)
             {
                 send(nsfd, each_poll.Qn_optns.c_str(), each_poll.Qn_optns.length(), 0);
+
                 char optbuff[2000] = {'\0'};
-                recv(nsfd, optbuff, sizeof(buff), 0);
-                string opt(optbuff);
-                each_poll.poll_status[email] = stoi(opt);
+                int bytes_read = recv(nsfd, optbuff, sizeof(optbuff), 0);
+                string option = rsaPrivateDecrypt(reinterpret_cast<const unsigned char *>(optbuff), bytes_read, serverRSA);
+                cout << "option recieved : " << option << endl;
+
+                char optbuff2[2000] = {'\0'};
+                bytes_read = recv(nsfd, optbuff2, sizeof(optbuff2), 0);
+                string Hash = rsaPublicDecrypt(reinterpret_cast<const unsigned char *>(optbuff2), bytes_read, rsa);
+
+                // compare recieved hash and calculated hash
+                cout << "calculated Hash : " << hashSHA256(option) << endl;
+                cout << "recieved Hash : " << Hash << endl;
+                if (Hash == hashSHA256(option))
+                    cout << "Digital Signature Successfully Verified" << endl;
+
+                each_poll.poll_status[email] = stoi(option);
                 cout << each_poll.poll_status[email] << endl;
             }
         }
     }
 }
 
-void SendResults(int nsfd, string email,RSA *rsa)
+void SendResults(int nsfd, string email, RSA *rsa)
 {
     string Result;
     for (auto each_poll : polls)
@@ -189,7 +203,7 @@ void *clientHandler(void *args)
     sleep(1);
     send(nsfd, pubE, strlen(pubE) + 1, 0);
     sleep(1);
-    cout<<"Key exchange successful"<<endl;
+    cout << "Key exchange successful" << endl;
 
     RSA *rsa = setRSAAttributes(user_n, user_e);
 
@@ -228,7 +242,7 @@ void *clientHandler(void *args)
     }
 
     response = rsaPublicEncrypt(reinterpret_cast<const unsigned char *>(response.c_str()), response.size(), rsa);
-    int sz=send(nsfd, response.c_str(), response.size(), 0);
+    send(nsfd, response.c_str(), response.size(), 0);
 
     if (res)
     {
@@ -257,7 +271,7 @@ void *clientHandler(void *args)
         }
         else if (command == "AnswerPoll")
         {
-            SendPoll(nsfd, email);
+            SendPoll(nsfd, email, rsa);
         }
         else if (command == "ShowResults")
         {

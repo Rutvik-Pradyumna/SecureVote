@@ -14,7 +14,7 @@ logout
 
 testCase2:
 
-signup 
+signup
 kr21csb0b30@student.nitw.ac.in
 myPass
 ...
